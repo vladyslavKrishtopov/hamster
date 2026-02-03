@@ -67,15 +67,24 @@
             </tr>
             <tr class="collapse" id="details-{{ loop.index0 }}">
               <td colspan="7" class="bg-light small">
-                <div class="p-3">
-                  <strong>Description:</strong>
-                  <div class="text-muted">{{ item.description or '—' }}</div>
-                  <div class="row mt-2">
-                    <div class="col-md-4"><strong>Location:</strong> {{ item.location or '—' }}</div>
-                    <div class="col-md-4"><strong>Category:</strong> {{ item.category or '—' }}</div>
-                    <div class="col-md-4"><strong>Quantity:</strong> {{ item.qty }}</div>
+                  <div class="p-3">
+                    <strong>Description:</strong>
+                    <div class="text-muted">{{ item.description or '—' }}</div>
+                    <div class="row mt-2">
+                      <div class="col-md-4"><strong>Location:</strong> {{ item.location or '—' }}</div>
+                      <div class="col-md-4"><strong>Category:</strong> {{ item.category or '—' }}</div>
+                      <div class="col-md-4"><strong>Quantity:</strong> {{ item.qty }}</div>
+                    </div>
+                    <div class="row mt-2">
+                      <div class="col-md-4"><strong>Purchase price:</strong>
+                        {% if item.purchase_price is defined %}
+                          ${{ '%.2f'|format(item.purchase_price) }}
+                        {% else %}
+                          —
+                        {% endif %}
+                      </div>
+                    </div>
                   </div>
-                </div>
               </td>
             </tr>
           {% endfor %}

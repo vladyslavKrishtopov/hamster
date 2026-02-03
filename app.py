@@ -134,6 +134,11 @@ def create_item():
         location = request.form.get('location', '').strip()
         category = request.form.get('category', '').strip()
         description = request.form.get('description', '').strip()
+        purchase_price_raw = request.form.get('purchase_price', '').strip()
+        try:
+            purchase_price = float(purchase_price_raw) if purchase_price_raw != '' else 0.0
+        except ValueError:
+            purchase_price = 0.0
 
         if not sku or not name:
             return render_template('form.html', error='SKU and name required', action=url_for('create_item'))
@@ -148,6 +153,7 @@ def create_item():
             'location': location,
             'category': category,
             'description': description,
+            'purchase_price': purchase_price,
         }
         save_items(items)
         return redirect(url_for('home_page'))
@@ -170,6 +176,11 @@ def edit_item(sku):
         location = request.form.get('location', '').strip()
         category = request.form.get('category', '').strip()
         description = request.form.get('description', '').strip()
+        purchase_price_raw = request.form.get('purchase_price', '').strip()
+        try:
+            purchase_price = float(purchase_price_raw) if purchase_price_raw != '' else item.get('purchase_price', 0.0)
+        except ValueError:
+            purchase_price = item.get('purchase_price', 0.0)
 
         if not name:
             return render_template('form.html', error='Name required', item=item, action=url_for('edit_item', sku=sku))
@@ -180,6 +191,7 @@ def edit_item(sku):
             'location': location,
             'category': category,
             'description': description,
+            'purchase_price': purchase_price,
         })
         items[sku] = item
         save_items(items)
