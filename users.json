@@ -1,10 +1,1 @@
-{
-  "vlad": {
-    "email": "example@example.com",
-    "password_hash": "scrypt:32768:8:1$BD5QC1JcraFrR1hr$8a76c6b2d70f1c07bf56f69a573e188adf5461f2e0722839eefd1ef781e6064c5c09dd1e835fc51f47dc72902c172b3376de6548cf68e1ed7e477b0c7bd39461"
-  },
-  "alina": {
-    "email": "papa@psps.com",
-    "password_hash": "scrypt:32768:8:1$ludh0SWmGwLpcZSe$ee2b819e7f314611f641b366700a421f08b8517c03230a7f90ab9464264133a782cbcb18730e195ab132e2aa6b3ddebf09ea3f5b17e3378ebcf6f0bca74795cd"
-  }
-}
+{}
