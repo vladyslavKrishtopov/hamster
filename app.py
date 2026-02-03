@@ -1,5 +1,6 @@
-from flask import Flask, render_template, request, redirect, url_for, session
+from flask import Flask, render_template, request, redirect, url_for, session, abort
 import json
+import uuid
 from pathlib import Path
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -26,7 +27,7 @@ def save_users(users: dict):
         json.dump(users, f, indent=2)
 
 
-# Simple JSON-backed items store (keyed by SKU)
+# Simple JSON-backed items store (keyed by internal id)
 ITEMS_PATH = Path(__file__).parent / 'items.json'
 
 
@@ -68,10 +69,11 @@ def home_page():
     # require login
     if 'user' not in session:
         return redirect(url_for('home'))
+    user = session.get('user')
     items = load_items()
-    # items stored as dict keyed by sku -> item dict
-    # convert to list of tuples for predictable ordering
-    items_list = [dict(sku=sku, **data) for sku, data in items.items()]
+    # items stored as dict keyed by internal id -> item dict
+    # show only items owned by the current user; include the internal id
+    items_list = [dict(id=item_id, **data) for item_id, data in items.items() if data.get('owner') == user]
     return render_template('table.html', items=items_list)
 
 
@@ -144,16 +146,22 @@ def create_item():
             return render_template('form.html', error='SKU and name required', action=url_for('create_item'))
 
         items = load_items()
-        if sku in items:
-            return render_template('form.html', error='SKU already exists', action=url_for('create_item'))
-
-        items[sku] = {
+        # Always assign owner server-side from session
+        owner = session.get('user')
+        # Enforce SKU uniqueness per-user
+        if any(d.get('sku') == sku and d.get('owner') == owner for d in items.values()):
+            return render_template('form.html', error='SKU already exists for this user', action=url_for('create_item'))
+        # Use an internal UUID as the items dict key
+        item_id = str(uuid.uuid4())
+        items[item_id] = {
+            'sku': sku,
             'name': name,
             'qty': int(qty) if qty.isdigit() else 0,
             'location': location,
             'category': category,
             'description': description,
             'purchase_price': purchase_price,
+            'owner': owner,
         }
         save_items(items)
         return redirect(url_for('home_page'))
@@ -161,14 +169,17 @@ def create_item():
     return render_template('form.html', action=url_for('create_item'))
 
 
-@app.route('/items/<sku>/edit', methods=['GET', 'POST'])
-def edit_item(sku):
+@app.route('/items/<item_id>/edit', methods=['GET', 'POST'])
+def edit_item(item_id):
     if 'user' not in session:
         return redirect(url_for('home'))
     items = load_items()
-    item = items.get(sku)
+    item = items.get(item_id)
     if not item:
         return redirect(url_for('home_page'))
+    # only owner may edit
+    if item.get('owner') != session.get('user'):
+        abort(403)
 
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
@@ -183,7 +194,7 @@ def edit_item(sku):
             purchase_price = item.get('purchase_price', 0.0)
 
         if not name:
-            return render_template('form.html', error='Name required', item=item, action=url_for('edit_item', sku=sku))
+            return render_template('form.html', error='Name required', item=item, action=url_for('edit_item', item_id=item_id))
 
         item.update({
             'name': name,
@@ -193,24 +204,28 @@ def edit_item(sku):
             'description': description,
             'purchase_price': purchase_price,
         })
-        items[sku] = item
+        items[item_id] = item
         save_items(items)
         return redirect(url_for('home_page'))
 
     # GET
-    # provide item and action
+    # provide item and action (include id for templates)
     data = dict(item)
-    data['sku'] = sku
-    return render_template('form.html', item=data, action=url_for('edit_item', sku=sku))
+    data['id'] = item_id
+    data['sku'] = item.get('sku')
+    return render_template('form.html', item=data, action=url_for('edit_item', item_id=item_id))
 
 
-@app.route('/items/<sku>/delete', methods=['POST'])
-def delete_item(sku):
+@app.route('/items/<item_id>/delete', methods=['POST'])
+def delete_item(item_id):
     if 'user' not in session:
         return redirect(url_for('home'))
     items = load_items()
-    if sku in items:
-        items.pop(sku)
+    if item_id in items:
+        # enforce ownership before deleting
+        if items[item_id].get('owner') != session.get('user'):
+            abort(403)
+        items.pop(item_id)
         save_items(items)
     return redirect(url_for('home_page'))
 

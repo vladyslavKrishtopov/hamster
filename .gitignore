@@ -1,2 +1,51 @@
+# Project data
 items.json
 users.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+env/
+venv/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Packages
+*.egg-info/
+dist/
+build/
+pip-wheel-metadata/
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage
+.pytest_cache/
+.tox/
+.coverage
+coverage.xml
+htmlcov/
+
+# PyCharm / VSCode
+.idea/
+.vscode/
+
+# macOS
+.DS_Store
+
+# environment variables
+.env
+.env.*
+
+# SQLite
+*.sqlite3
+
+# Misc
+.cache/
+logs/
+*.log
