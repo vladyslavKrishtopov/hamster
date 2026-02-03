@@ -1,6 +1,1 @@
-{
-  "vlad": {
-    "email": "you@example.com",
-    "password_hash": "scrypt:32768:8:1$yvhhyNIHyNaJ2MKQ$88c340e0c86b1a9ef0328614ae8d7662bc9c80df364ee172534ad14028fc3181536872d47349e93439dd0c4d5678fdf8b77c6ffdada80f62dfcd3223edf89dca"
-  }
-}
+{}
