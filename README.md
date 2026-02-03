@@ -1,5 +1,5 @@
 
-Hamster — Minimal Inventory Flask App
+Hamster — Minimal Inventory Tracking Flask App
 =====================================
 
 Overview
