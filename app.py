@@ -1,49 +1,22 @@
 from flask import Flask, render_template, request, redirect, url_for, session, abort
-import json
 import uuid
-from pathlib import Path
 from werkzeug.security import generate_password_hash, check_password_hash
+from models import db, User, Item
+from flask_migrate import Migrate
+
 
 app = Flask(__name__)
 # WARNING: for production set a secure random secret key, e.g. from environment
 app.secret_key = 'dev-secret'
 
-# Simple JSON-backed user store (not for production). File path: users.json
-USERS_PATH = Path(__file__).parent / 'users.json'
+# SQLAlchemy / SQLite config
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///hamster.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# initialize DB
+db.init_app(app)
+migrate = Migrate(app, db)
 
-def load_users():
-    if not USERS_PATH.exists():
-        return {}
-    try:
-        with open(USERS_PATH, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception:
-        return {}
-
-
-def save_users(users: dict):
-    with open(USERS_PATH, 'w', encoding='utf-8') as f:
-        json.dump(users, f, indent=2)
-
-
-# Simple JSON-backed items store (keyed by internal id)
-ITEMS_PATH = Path(__file__).parent / 'items.json'
-
-
-def load_items():
-    if not ITEMS_PATH.exists():
-        return {}
-    try:
-        with open(ITEMS_PATH, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception:
-        return {}
-
-
-def save_items(items: dict):
-    with open(ITEMS_PATH, 'w', encoding='utf-8') as f:
-        json.dump(items, f, indent=2)
 
 @app.route('/', methods=['GET', 'POST'])
 def home():
@@ -51,10 +24,10 @@ def home():
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
-        users = load_users()
-        user = users.get(username)
-        if user and check_password_hash(user.get('password_hash', ''), password):
+        user = User.query.filter_by(username=username).first()
+        if user and check_password_hash(user.password_hash, password):
             session['user'] = username
+            session['user_id'] = user.id
             return redirect(url_for('home_page'))
         else:
             return render_template('main.html', error='Invalid credentials')
@@ -69,12 +42,10 @@ def home_page():
     # require login
     if 'user' not in session:
         return redirect(url_for('home'))
-    user = session.get('user')
-    items = load_items()
-    # items stored as dict keyed by internal id -> item dict
-    # show only items owned by the current user; include the internal id
-    items_list = [dict(id=item_id, **data) for item_id, data in items.items() if data.get('owner') == user]
-    return render_template('table.html', items=items_list)
+    user_id = session.get('user_id')
+    # query items owned by current user
+    items = Item.query.filter_by(owner_id=user_id).all()
+    return render_template('table.html', items=items)
 
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -90,15 +61,12 @@ def register():
         if password != confirm:
             return render_template('register.html', error='Passwords do not match')
 
-        users = load_users()
-        if username in users:
+        if User.query.filter_by(username=username).first():
             return render_template('register.html', error='Username already exists')
 
-        users[username] = {
-            'email': email,
-            'password_hash': generate_password_hash(password)
-        }
-        save_users(users)
+        u = User(username=username, email=email, password_hash=generate_password_hash(password))
+        db.session.add(u)
+        db.session.commit()
         return redirect(url_for('home', message='Account created — please sign in'))
 
     return render_template('register.html')
@@ -145,25 +113,25 @@ def create_item():
         if not sku or not name:
             return render_template('form.html', error='SKU and name required', action=url_for('create_item'))
 
-        items = load_items()
-        # Always assign owner server-side from session
-        owner = session.get('user')
+        owner_id = session.get('user_id')
         # Enforce SKU uniqueness per-user
-        if any(d.get('sku') == sku and d.get('owner') == owner for d in items.values()):
+        if Item.query.filter_by(sku=sku, owner_id=owner_id).first():
             return render_template('form.html', error='SKU already exists for this user', action=url_for('create_item'))
-        # Use an internal UUID as the items dict key
+
         item_id = str(uuid.uuid4())
-        items[item_id] = {
-            'sku': sku,
-            'name': name,
-            'qty': int(qty) if qty.isdigit() else 0,
-            'location': location,
-            'category': category,
-            'description': description,
-            'purchase_price': purchase_price,
-            'owner': owner,
-        }
-        save_items(items)
+        it = Item(
+            id=item_id,
+            sku=sku,
+            name=name,
+            qty=int(qty) if qty.isdigit() else 0,
+            location=location,
+            category=category,
+            description=description,
+            purchase_price=purchase_price,
+            owner_id=owner_id,
+        )
+        db.session.add(it)
+        db.session.commit()
         return redirect(url_for('home_page'))
 
     return render_template('form.html', action=url_for('create_item'))
@@ -173,12 +141,11 @@ def create_item():
 def edit_item(item_id):
     if 'user' not in session:
         return redirect(url_for('home'))
-    items = load_items()
-    item = items.get(item_id)
+    item = Item.query.get(item_id)
     if not item:
         return redirect(url_for('home_page'))
     # only owner may edit
-    if item.get('owner') != session.get('user'):
+    if item.owner_id != session.get('user_id'):
         abort(403)
 
     if request.method == 'POST':
@@ -189,45 +156,45 @@ def edit_item(item_id):
         description = request.form.get('description', '').strip()
         purchase_price_raw = request.form.get('purchase_price', '').strip()
         try:
-            purchase_price = float(purchase_price_raw) if purchase_price_raw != '' else item.get('purchase_price', 0.0)
+            purchase_price = float(purchase_price_raw) if purchase_price_raw != '' else item.purchase_price
         except ValueError:
-            purchase_price = item.get('purchase_price', 0.0)
+            purchase_price = item.purchase_price
 
         if not name:
             return render_template('form.html', error='Name required', item=item, action=url_for('edit_item', item_id=item_id))
 
-        item.update({
-            'name': name,
-            'qty': int(qty) if qty.isdigit() else 0,
-            'location': location,
-            'category': category,
-            'description': description,
-            'purchase_price': purchase_price,
-        })
-        items[item_id] = item
-        save_items(items)
+        item.name = name
+        item.qty = int(qty) if qty.isdigit() else 0
+        item.location = location
+        item.category = category
+        item.description = description
+        item.purchase_price = purchase_price
+        db.session.commit()
         return redirect(url_for('home_page'))
 
     # GET
-    # provide item and action (include id for templates)
-    data = dict(item)
-    data['id'] = item_id
-    data['sku'] = item.get('sku')
-    return render_template('form.html', item=data, action=url_for('edit_item', item_id=item_id))
+    # provide item and action (item is a model instance)
+    return render_template('form.html', item=item, action=url_for('edit_item', item_id=item_id))
 
 
 @app.route('/items/<item_id>/delete', methods=['POST'])
 def delete_item(item_id):
     if 'user' not in session:
         return redirect(url_for('home'))
-    items = load_items()
-    if item_id in items:
-        # enforce ownership before deleting
-        if items[item_id].get('owner') != session.get('user'):
-            abort(403)
-        items.pop(item_id)
-        save_items(items)
+    owner_id = session.get('user_id')
+    # check existence and ownership via lightweight query
+    owner_row = Item.query.with_entities(Item.owner_id).filter_by(id=item_id).first()
+    if not owner_row:
+        return redirect(url_for('home_page'))
+    if owner_row[0] != owner_id:
+        abort(403)
+    # perform a query-based delete to avoid instance/session attach issues
+    Item.query.filter_by(id=item_id).delete()
+    db.session.commit()
     return redirect(url_for('home_page'))
 
 if __name__ == '__main__':
+    # create DB tables if they don't exist
+    with app.app_context():
+        db.create_all()
     app.run(debug=True, host='0.0.0.0', port=3000)
