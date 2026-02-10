@@ -44,6 +44,10 @@ htmlcov/
 
 # SQLite
 *.sqlite3
+# SQLite DB files
+*.db
+hamster.db
+instance/*.db
 
 # Misc
 .cache/
